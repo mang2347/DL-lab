@@ -1,0 +1,196 @@
+Deep Neural Network for Image Classification: Application
+When you finish this, you will have finished the last programming assignment of Week 4, and also the last programming assignment of this course!
+You will use the functions you'd implemented in the previous assignment to build a deep network, and apply it to cat vs non-cat classification. Hopefully, you will see an improvement in accuracy relative to your previous logistic regression implementation.
+After this assignment you will be able to:
+Build and apply a deep neural network to supervised learning. 
+Let's get started!
+
+1 - Packages
+
+Let's first import all the packages that you will need during this assignment.
+numpy is the fundamental package for scientific computing with Python.
+matplotlib is a library to plot graphs in Python.
+h5py is a common package to interact with a dataset that is stored on an H5 file.
+PIL and scipy are used here to test your model with your own picture at the end.
+dnn_app_utils provides the functions implemented in the "Building your Deep Neural Network: Step by Step" assignment to this notebook.
+np.random.seed(1) is used to keep all the random function calls consistent. It will help us grade your work.
+In [1]:
+import time
+import numpy as np
+import h5py
+import matplotlib.pyplot as plt
+import scipy
+from PIL import Image
+from scipy import ndimage
+from dnn_app_utils_v3 import *
+
+%matplotlib inline
+plt.rcParams['figure.figsize'] = (5.0, 4.0) # set default size of plots
+plt.rcParams['image.interpolation'] = 'nearest'
+plt.rcParams['image.cmap'] = 'gray'
+
+%load_ext autoreload
+%autoreload 2
+
+np.random.seed(1)
+
+2 - Dataset
+You will use the same "Cat vs non-Cat" dataset as in "Logistic Regression as a Neural Network" (Assignment 2). The model you had built had 70% test accuracy on classifying cats vs non-cats images. Hopefully, your new model will perform a better!
+Problem Statement: You are given a dataset ("data.h5") containing:
+- a training set of m_train images labelled as cat (1) or non-cat (0)
+- a test set of m_test images labelled as cat and non-cat
+- each image is of shape (num_px, num_px, 3) where 3 is for the 3 channels (RGB).
+
+Let's get more familiar with the dataset. Load the data by running the cell below.
+In [2]:
+train_x_orig, train_y, test_x_orig, test_y, classes = load_data()
+
+The following code will show you an image in the dataset. Feel free to change the index and re-run the cell multiple times to see other images.
+In [3]:
+# Example of a picture
+index = 10
+plt.imshow(train_x_orig[index])
+print ("y = " + str(train_y[0,index]) + ". It's a " + classes[train_y[0,index]].decode("utf-8") +  " picture.")
+
+y = 0. It's a non-cat picture.
+
+ 
+In [4]:
+# Example of a picture
+index = 50
+plt.imshow(train_x_orig[index])
+print ("y = " + str(train_y[0,index]) + ". It's a " + classes[train_y[0,index]].decode("utf-8") +  " picture.")
+
+y = 1. It's a cat picture.
+
+ 
+In [5]:
+# Explore your dataset 
+m_train = train_x_orig.shape[0]
+num_px = train_x_orig.shape[1]
+m_test = test_x_orig.shape[0]
+
+print ("Number of training examples: " + str(m_train))
+print ("Number of testing examples: " + str(m_test))
+print ("Each image is of size: (" + str(num_px) + ", " + str(num_px) + ", 3)")
+print ("train_x_orig shape: " + str(train_x_orig.shape))
+print ("train_y shape: " + str(train_y.shape))
+print ("test_x_orig shape: " + str(test_x_orig.shape))
+print ("test_y shape: " + str(test_y.shape))
+
+Number of training examples: 209
+Number of testing examples: 50
+Each image is of size: (64, 64, 3)
+train_x_orig shape: (209, 64, 64, 3)
+train_y shape: (1, 209)
+test_x_orig shape: (50, 64, 64, 3)
+test_y shape: (1, 50)
+
+As usual, you reshape and standardize the images before feeding them to the network. The code is given in the cell below.
+
+In [6]:
+# Reshape the training and test examples 
+train_x_flatten = train_x_orig.reshape(train_x_orig.shape[0], -1).T   # The "-1" makes reshape flatten the remaining dimensions
+test_x_flatten = test_x_orig.reshape(test_x_orig.shape[0], -1).T
+
+# Standardize data to have feature values between 0 and 1.
+train_x = train_x_flatten/255.
+test_x = test_x_flatten/255.
+
+print ("train_x's shape: " + str(train_x.shape))
+print ("test_x's shape: " + str(test_x.shape))
+
+train_x's shape: (12288, 209)
+test_x's shape: (12288, 50)
+
+ equals  which is the size of one reshaped image vector.
+
+3 - Architecture of your model
+
+Now that you are familiar with the dataset, it is time to build a deep neural network to distinguish cat images from non-cat images.
+You will build two different models:
+A 2-layer neural network
+An L-layer deep neural network
+You will then compare the performance of these models, and also try out different values for .
+Let's look at the two architectures.
+3.1 - 2-layer neural network
+
+:
+The input is a (64,64,3) image which is flattened to a vector of size . 
+The corresponding vector:  is then multiplied by the weight matrix  of size .
+You then add a bias term and take its relu to get the following vector: .
+You then repeat the same process.
+You multiply the resulting vector by  and add your intercept (bias). 
+Finally, you take the sigmoid of the result. If it is greater than 0.5, you classify it to be a cat.
+3.2 - L-layer deep neural network
+It is hard to represent an L-layer deep neural network with the above representation. However, here is a simplified network representation:
+
+:
+The input is a (64,64,3) image which is flattened to a vector of size (12288,1).
+The corresponding vector:  is then multiplied by the weight matrix  and then you add the intercept . The result is called the linear unit.
+Next, you take the relu of the linear unit. This process could be repeated several times for each  depending on the model architecture.
+Finally, you take the sigmoid of the final linear unit. If it is greater than 0.5, you classify it to be a cat.
+3.3 - General methodology
+As usual you will follow the Deep Learning methodology to build the model:
+1. Initialize parameters / Define hyperparameters
+2. Loop for num_iterations:
+    a. Forward propagation
+    b. Compute cost function
+    c. Backward propagation
+    d. Update parameters (using parameters, and grads from backprop) 
+4. Use trained parameters to predict labels
+
+Let's now implement those two models!
+
+4 - Two-layer neural network
+Question: Use the helper functions you have implemented in the previous assignment to build a 2-layer neural network with the following structure: LINEAR -> RELU -> LINEAR -> SIGMOID. The functions you may need and their inputs are:
+def initialize_parameters(n_x, n_h, n_y):
+    ...
+    return parameters 
+def linear_activation_forward(A_prev, W, b, activation):
+    ...
+    return A, cache
+def compute_cost(AL, Y):
+    ...
+    return cost
+def linear_activation_backward(dA, cache, activation):
+    ...
+    return dA_prev, dW, db
+def update_parameters(parameters, grads, learning_rate):
+    ...
+    return parameters
+In [7]:
+### CONSTANTS DEFINING THE MODEL ####
+n_x = 12288     # num_px * num_px * 3
+n_h = 7
+n_y = 1
+layers_dims = (n_x, n_h, n_y)
+In [8]:
+# GRADED FUNCTION: two_layer_model
+
+def two_layer_model(X, Y, layers_dims, learning_rate = 0.0075, num_iterations = 3000, print_cost=False):
+    """
+    Implements a two-layer neural network: LINEAR->RELU->LINEAR->SIGMOID.
+    
+    Arguments:
+    X -- input data, of shape (n_x, number of examples)
+    Y -- true "label" vector (containing 1 if cat, 0 if non-cat), of shape (1, number of examples)
+    layers_dims -- dimensions of the layers (n_x, n_h, n_y)
+    num_iterations -- number of iterations of the optimization loop
+    learning_rate -- learning rate of the gradient descent update rule
+    print_cost -- If set to True, this will print the cost every 100 iterations 
+    
+    Returns:
+    parameters -- a dictionary containing W1, W2, b1, and b2
+    """
+    
+    np.random.seed(1)
+    grads = {}
+    costs = []                              # to keep track of the cost
+    m = X.shape[1]                           # number of examples
+    (n_x, n_h, n_y) = layers_dims
+    
+    # Initialize parameters dictionary, by calling one of the functions you'd previously implemented
+    ### START CODE HERE ### (≈ 1 line of code)
+    parameters = initialize_parameters(n_x, n_h, n_y)
+    ### END CODE HERE ###
